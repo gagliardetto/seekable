@@ -132,29 +132,21 @@ func (tracker *OffsetTracker) GetLineReader(r io.ReaderAt, lineNum int) (io.Read
 	return io.NewSectionReader(r, int64(o), int64(l)), nil
 }
 
-// func (tracker *OffsetTracker) AddOffset(offset int) error {
-// 	tracker.mu.Lock()
-// 	defer tracker.mu.Unlock()
+// RegisterByLen will register a new item of given length.
+func (tracker *OffsetTracker) RegisterByLen(length int) (int, error) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
 
-// 	lastOffset := tracker.offsets[len(tracker.offsets)-1]
-// 	if offset <= lastOffset {
-// 		return errors.New("provided offset not valid; must be greater than the last registered offset")
-// 	}
+	var lastOffset int
+	if len(tracker.offsets) > 0 {
+		lastOffset = tracker.offsets[len(tracker.offsets)-1]
+	} else {
+		tracker.offsets = append(tracker.offsets, 0)
+	}
 
-// 	tracker.offsets = append(tracker.offsets, offset)
-// 	tracker.len++
-// 	return nil
-// }
+	offset := lastOffset + length
 
-// func (tracker *OffsetTracker) AddOffsetByLen(length int) error {
-// 	tracker.mu.Lock()
-// 	defer tracker.mu.Unlock()
-
-// 	lastOffset := tracker.offsets[len(tracker.offsets)-1]
-
-// 	offset := lastOffset + length
-
-// 	tracker.offsets = append(tracker.offsets, offset)
-// 	tracker.len++
-// 	return nil
-// }
+	tracker.offsets = append(tracker.offsets, offset)
+	tracker.len++
+	return tracker.len, nil
+}

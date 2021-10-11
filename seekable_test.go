@@ -1,12 +1,92 @@
 package seekable
 
 import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"strings"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 )
+
+func _WriteUint32LE(writer io.Writer, i uint32) (err error) {
+	return _WriteUint32(writer, i, binary.LittleEndian)
+}
+
+func _WriteUint32(writer io.Writer, i uint32, order binary.ByteOrder) (err error) {
+	buf := make([]byte, 4)
+	order.PutUint32(buf, i)
+	_, err = writer.Write(buf)
+	return err
+}
+
+func _ReadUint32LE(reader io.Reader) (out uint32, err error) {
+	return _ReadUint32(reader, binary.LittleEndian)
+}
+
+func _ReadUint32(reader io.Reader, order binary.ByteOrder) (out uint32, err error) {
+	buf := make([]byte, 4)
+	n, err := io.ReadFull(reader, buf)
+	if err != nil {
+		return 0, err
+	}
+	if n != 4 {
+		return 0, fmt.Errorf("expected 4 bytes, got %v", n)
+	}
+	out = order.Uint32(buf)
+	return
+}
+
+func TestRegisterByLen(t *testing.T) {
+	buf := bytes.NewBuffer([]byte{})
+	tracker := NewOffsetTracker()
+	items := [][]byte{
+		[]byte("foo"),
+		[]byte("bar"),
+		[]byte("hello"),
+		[]byte("world"),
+	}
+	{
+		for itemIndex, item := range items {
+			ln := len(item)
+
+			err := _WriteUint32LE(buf, uint32(ln))
+			require.NoError(t, err)
+
+			gotLn, err := buf.Write(item)
+			require.NoError(t, err)
+			require.Equal(t, ln, gotLn)
+
+			lineNum, err := tracker.RegisterByLen(4 + ln)
+			require.NoError(t, err)
+			require.Equal(t, itemIndex+1, lineNum)
+		}
+		spew.Dump(tracker)
+	}
+	reader := bytes.NewReader(buf.Bytes())
+	{
+		require.Equal(t, []int{0, 7, 14, 23, 32}, tracker.offsets)
+	}
+	{
+		for i := 0; i < len(items)-1; i++ {
+			lineNum := i + 1
+			got, err := tracker.GetLine(reader, lineNum)
+			require.NoError(t, err)
+			lineReader := bytes.NewReader(got)
+			gotContentLen, err := _ReadUint32LE(lineReader)
+			require.NoError(t, err)
+			content, err := io.ReadAll(lineReader)
+			require.NoError(t, err)
+			require.Equal(t, len(content), int(gotContentLen))
+			require.Equal(t, items[lineNum-1], content)
+			require.Equal(t, items[i], content)
+		}
+	}
+}
 
 func TestNewOffsetTracker(t *testing.T) {
 	{
