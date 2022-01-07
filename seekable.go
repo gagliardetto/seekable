@@ -7,9 +7,9 @@ import (
 )
 
 type OffsetTracker struct {
-	offsets []int
-	len     int
-	mu      *sync.RWMutex
+	offsets  []int
+	numLines int
+	mu       *sync.RWMutex
 }
 
 func NewOffsetTracker() *OffsetTracker {
@@ -61,7 +61,7 @@ func (tracker *OffsetTracker) CompileIndex(r io.Reader, limit int) error {
 
 	var err error
 	tracker.offsets, err = getOffsetsOfNewlines(r, limit)
-	tracker.len = len(tracker.offsets)
+	tracker.numLines = len(tracker.offsets) - 1
 	return err
 }
 
@@ -69,7 +69,7 @@ func (tracker *OffsetTracker) validateLineNumber(lineNum int) error {
 	if lineNum < 1 {
 		return fmt.Errorf("lineNum out of bounds: got %v, but min is 1", lineNum)
 	}
-	maxLineNum := tracker.len - 1
+	maxLineNum := tracker.numLines
 	if lineNum > maxLineNum {
 		return fmt.Errorf("lineNum out of bounds: got %v, but max is %v", lineNum, maxLineNum)
 	}
@@ -80,24 +80,9 @@ func (tracker *OffsetTracker) GetLine(r io.ReaderAt, lineNum int) ([]byte, error
 	tracker.mu.RLock()
 	defer tracker.mu.RUnlock()
 
-	if err := tracker.validateLineNumber(lineNum); err != nil {
+	o, l, err := tracker.getOffset(lineNum)
+	if err != nil {
 		return nil, err
-	}
-
-	i := lineNum - 1
-	o := tracker.offsets[i]
-
-	untilIndex := i
-	if i < tracker.len-1 {
-		untilIndex++
-	}
-
-	// The -1 is to exclude the final newline:
-	l := tracker.offsets[untilIndex] - o
-
-	if l <= 0 {
-		// TODO
-		return nil, nil
 	}
 	lineAt := make([]byte, l)
 	if _, err := r.ReadAt(lineAt, int64(o)); err != nil {
@@ -106,28 +91,36 @@ func (tracker *OffsetTracker) GetLine(r io.ReaderAt, lineNum int) ([]byte, error
 	return lineAt, nil
 }
 
-func (tracker *OffsetTracker) GetLineReader(r io.ReaderAt, lineNum int) (io.Reader, error) {
-	tracker.mu.RLock()
-	defer tracker.mu.RUnlock()
-
+func (tracker *OffsetTracker) getOffset(lineNum int) (int, int, error) {
 	if err := tracker.validateLineNumber(lineNum); err != nil {
-		return nil, err
+		return 0, 0, err
 	}
 
 	i := lineNum - 1
 	o := tracker.offsets[i]
 
 	untilIndex := i
-	if i < tracker.len-1 {
+	if i < tracker.numLines {
 		untilIndex++
 	}
 
-	// The -1 is to exclude the final newline:
 	l := tracker.offsets[untilIndex] - o
 
 	if l <= 0 {
-		// TODO:
-		return nil, nil
+		// TODO
+		return 0, 0, fmt.Errorf("l is %v", l)
+	}
+
+	return o, l, nil
+}
+
+func (tracker *OffsetTracker) GetLineReader(r io.ReaderAt, lineNum int) (io.Reader, error) {
+	tracker.mu.RLock()
+	defer tracker.mu.RUnlock()
+
+	o, l, err := tracker.getOffset(lineNum)
+	if err != nil {
+		return nil, err
 	}
 	return io.NewSectionReader(r, int64(o), int64(l)), nil
 }
@@ -147,6 +140,6 @@ func (tracker *OffsetTracker) RegisterByLen(length int) (int, error) {
 	offset := lastOffset + length
 
 	tracker.offsets = append(tracker.offsets, offset)
-	tracker.len++
-	return tracker.len, nil
+	tracker.numLines++
+	return tracker.numLines, nil
 }
