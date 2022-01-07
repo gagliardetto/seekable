@@ -146,3 +146,10 @@ func (tracker *OffsetTracker) RegisterByLen(length int) (int, error) {
 	tracker.numLines++
 	return tracker.numLines, nil
 }
+
+func (tracker *OffsetTracker) NumItems() int {
+	tracker.mu.RLock()
+	defer tracker.mu.RUnlock()
+
+	return tracker.numLines
+}
