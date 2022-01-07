@@ -76,6 +76,7 @@ func (tracker *OffsetTracker) validateLineNumber(lineNum int) error {
 	return nil
 }
 
+// GetLine returns the the provided line bytes; lineNum is 1-based.
 func (tracker *OffsetTracker) GetLine(r io.ReaderAt, lineNum int) ([]byte, error) {
 	tracker.mu.RLock()
 	defer tracker.mu.RUnlock()
@@ -91,6 +92,7 @@ func (tracker *OffsetTracker) GetLine(r io.ReaderAt, lineNum int) ([]byte, error
 	return lineAt, nil
 }
 
+// get offset and length for the provided line; lineNum is 1-based
 func (tracker *OffsetTracker) getOffset(lineNum int) (int, int, error) {
 	if err := tracker.validateLineNumber(lineNum); err != nil {
 		return 0, 0, err
@@ -114,6 +116,7 @@ func (tracker *OffsetTracker) getOffset(lineNum int) (int, int, error) {
 	return o, l, nil
 }
 
+// GetLineReader returns a reader for the provided line; lineNum is 1-based.
 func (tracker *OffsetTracker) GetLineReader(r io.ReaderAt, lineNum int) (io.Reader, error) {
 	tracker.mu.RLock()
 	defer tracker.mu.RUnlock()
